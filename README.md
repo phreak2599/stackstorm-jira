@@ -20,6 +20,8 @@ to `/opt/stackstorm/configs/jira.yaml` and edit as required.
   don't require or allow you to specify a project (e.g. ``STORM``).
 * ``verify`` - Verify SSL certificates. Default True. Set to False to disable verification
 * ``auth_method`` - Specify either `basic` or `oauth` authentication
+* ``additional_jql`` - Will be appended to the front of the default JQL query.
+* ``include_existing`` - If enabled will also trigger on tickets that are found on startup.
 
 Include the following settings when using the `oauth` auth_method:
 * ``rsa_cert_file`` - Path to the file with a private key

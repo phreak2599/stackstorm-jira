@@ -5,6 +5,10 @@ from jira.client import JIRA
 
 from st2reactor.sensor.base import PollingSensor
 
+import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
 
 class JIRASensor(PollingSensor):
     '''
@@ -32,6 +36,9 @@ class JIRASensor(PollingSensor):
         self._trigger_name = 'issues_tracker'
         self._trigger_pack = 'jira'
         self._trigger_ref = '.'.join([self._trigger_pack, self._trigger_name])
+        self._additional_jql = None
+        self._verify = None
+        self._include_existing = False
 
     def _read_cert(self, file_path):
         with open(file_path) as f:
@@ -54,11 +61,11 @@ class JIRASensor(PollingSensor):
                 'key_cert': self._rsa_key
             }
 
-            self._jira_client = JIRA(options={'server': self._jira_url},
+            self._jira_client = JIRA(options={'server': self._jira_url, 'verify': self._verify},
                                      oauth=oauth_creds)
         elif auth_method == 'basic':
             basic_creds = (self._config['username'], self._config['password'])
-            self._jira_client = JIRA(options={'server': self._jira_url},
+            self._jira_client = JIRA(options={'server': self._jira_url, 'verify': self._verify},
                                      basic_auth=basic_creds)
 
         else:
@@ -70,12 +77,19 @@ class JIRASensor(PollingSensor):
             self._projects_available = set()
             for proj in self._jira_client.projects():
                 self._projects_available.add(proj.key)
+        
         self._project = self._config.get('project', None)
         if not self._project or self._project not in self._projects_available:
             raise Exception('Invalid project (%s) to track.' % self._project)
+
         self._jql_query = 'project=%s' % self._project
-        all_issues = self._jira_client.search_issues(self._jql_query, maxResults=None)
-        self._issues_in_project = {issue.key: issue for issue in all_issues}
+        self._additional_jql = self._config["additional_jql"]
+        self._jql_query = ' '.join([self._additional_jql, self._jql_query])
+        
+        self._include_existing = self._config.get('include_existing', False)
+        if self._include_existing:
+            all_issues = self._jira_client.search_issues(self._jql_query, maxResults=None)
+            self._issues_in_project = {issue.key: issue for issue in all_issues}
 
     def poll(self):
         self._detect_new_issues()
@@ -116,4 +130,6 @@ class JIRASensor(PollingSensor):
         payload['assignee'] = issue.raw['fields']['assignee']
         payload['fix_versions'] = issue.raw['fields']['fixVersions']
         payload['issue_type'] = issue.raw['fields']['issuetype']['name']
+        payload['summary'] = issue.raw['fields']['summary']
+        payload['description'] = issue.raw['fields']['description']
         self._sensor_service.dispatch(trigger, payload)
